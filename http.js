@@ -1,6 +1,6 @@
 import { AsyncStorage } from 'react-native'
 
-async function http (mutate, actionName, actionResult) {
+export default async function http (mutate, actionName, actionResult) {
   // logs
   let prevTime
   let networkTime
