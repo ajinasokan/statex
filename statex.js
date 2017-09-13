@@ -1,0 +1,65 @@
+import React, { PureComponent } from 'react'
+import createReactClass from 'create-react-class'
+
+let _state = {}
+let _listeners = []
+let _middlewares = []
+let _actions = {}
+let _reducers = {}
+let _dispatchers = {}
+
+function init (actions, reducers, middlewares) {
+  _middlewares = middlewares
+  actions.forEach((action) => { _actions = {..._actions, ...action} })
+  reducers.forEach((reducer) => { _state = {..._state, ...reducer.init()}; _reducers = {..._reducers, ...reducer} })
+  Object.keys(_actions).forEach((action) => { _dispatchers[action] = (...params) => mutate(action, params) })
+}
+
+function connect (container, map) {
+  return createReactClass({ render: () => <Listener root={container} map={map} /> })
+}
+
+function mutate (actionName, params) {
+  let prevState, prevTime
+  if (__DEV__) {
+    prevState = JSON.stringify(_state)
+    prevTime = window.performance.now()
+  }
+  let actionResult = _actions[actionName] ? _actions[actionName](...params) : params
+  if (typeof actionResult === 'function') { actionResult(mutate, _state); actionResult = undefined }
+  let diff = _reducers[actionName] ? _reducers[actionName](actionResult, _state) : {}
+  _state = {..._state, ...diff}
+  _listeners.forEach(l => l.setState(_state))
+  if (__DEV__) {
+    let newState = JSON.stringify(_state)
+    let newTime = window.performance.now()
+    report(prevState, actionName, params, actionResult, diff, newState, newTime - prevTime)
+  }
+  _middlewares.forEach((middleware) => middleware(mutate, actionName, actionResult))
+}
+
+async function report (prevState, actionName, params, result, diff, newState, exectime) {
+  console.group('%caction', 'color:grey;font-weight:bold;', actionName)
+  console.log('%cprev state', 'color:#f17b5e;font-weight:bold;', JSON.parse(prevState))
+  console.log('%caction', 'color:#03A9F4;font-weight:bold;', { params, result, diff })
+  console.log('%cnew state', 'color:#4CAF50;font-weight:bold;', JSON.parse(newState))
+  console.log('%cconsumed', 'color:#f25e99;font-weight:bold;', exectime.toFixed(2) + 'ms')
+  if (result !== undefined && result.log !== undefined) {
+    console.log(...result.log)
+  }
+  console.groupEnd()
+}
+
+class Listener extends PureComponent {
+  componentWillMount () {
+    _listeners.push(this)
+  }
+  componentWillUnmount () {
+    _listeners.splice(_listeners.indexOf(this), 1)
+  }
+  render () {
+    return <this.props.root {...this.props.map(_state)} actions={_dispatchers} />
+  }
+}
+
+module.exports = { init, mutate, connect }

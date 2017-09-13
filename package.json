@@ -1,0 +1,25 @@
+{
+  "name": "statex",
+  "version": "1.0.0",
+  "description": "light weight redux library with middleware support",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajinasokan/statex.git"
+  },
+  "keywords": [
+    "react",
+    "redux",
+    "react-native",
+    "state"
+  ],
+  "author": "Ajin Asokan",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ajinasokan/statex/issues"
+  },
+  "homepage": "https://github.com/ajinasokan/statex#readme"
+}
