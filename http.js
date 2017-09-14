@@ -1,6 +1,10 @@
 import { AsyncStorage } from 'react-native'
+import unpack from './unpack'
 
 export default async function http (mutate, actionName, actionResult) {
+  // not http call
+  if (actionResult === undefined || actionResult.payload === undefined) return
+
   // logs
   let prevTime
   let networkTime
@@ -8,9 +12,6 @@ export default async function http (mutate, actionName, actionResult) {
   if (__DEV__) {
     prevTime = window.performance.now()
   }
-
-  // not http call
-  if (actionResult === undefined || actionResult.payload === undefined) return
 
   let enc = encodeURIComponent
   let queryStringify = dict => Object.entries(dict).map(([k, v]) => `${enc(k)}=${enc(v)}`).join('&')
@@ -62,9 +63,17 @@ export default async function http (mutate, actionName, actionResult) {
   if (res.ok) {
     // all good
     let result = { data: await res.json() }
+    if (actionResult.payload.struct !== undefined) {
+      result.data = unpack(actionResult.payload.struct, result.data)
+    }
     if (__DEV__) {
       parseTime = (window.performance.now() - prevTime - networkTime).toFixed(2)
       result.log = ['%cresponse %c' + networkTime + 'ms %cparse %c' + parseTime + 'ms', 'color:#26A69A;font-weight:bold;', '', 'color:#26A69A;font-weight:bold;', '']
+    }
+    if (result.data === undefined) {
+      let result = { data: { 'status': 'error', 'message': 'Parse error', 'error_type': res.status } }
+      mutate(actionName + 'Fail', result)
+      return
     }
     mutate(actionName + 'Success', result)
     if (method === 'GET') {
@@ -75,9 +84,17 @@ export default async function http (mutate, actionName, actionResult) {
   } else if (res.status === 304) {
     // use cache
     let result = { data: JSON.parse(await AsyncStorage.getItem('cache_' + fullUrl)) }
+    if (actionResult.payload.struct !== undefined) {
+      result.data = unpack(actionResult.payload.struct, result.data)
+    }
     if (__DEV__) {
       parseTime = (window.performance.now() - prevTime - networkTime).toFixed(2)
       result.log = ['%ccache %c' + networkTime + 'ms %cparse %c' + parseTime + 'ms', 'color:#26A69A;font-weight:bold;', '', 'color:#26A69A;font-weight:bold;', '']
+    }
+    if (result.data === undefined) {
+      let result = { data: { 'status': 'error', 'message': 'Parse error', 'error_type': res.status } }
+      mutate(actionName + 'Fail', result)
+      return
     }
     mutate(actionName + 'Success', result)
   } else if (res.headers.map['content-type'][0] === 'application/json') {
