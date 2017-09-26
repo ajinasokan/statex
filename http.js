@@ -1,7 +1,7 @@
 import { AsyncStorage } from 'react-native'
 import unpack from './unpack'
 
-export default async function http (mutate, actionName, actionResult) {
+async function http (mutate, actionName, actionResult, config) {
   // not http call
   if (actionResult === undefined || actionResult.payload === undefined) return
 
@@ -51,9 +51,16 @@ export default async function http (mutate, actionName, actionResult) {
   // calls
   let res
   try {
-    res = await fetch(fullUrl, {method, headers, body})
+    let params = {fullUrl, method, headers, body}
+    if (config && config.beforeRequest) {
+      params = config.beforeRequest(params)
+    }
+    res = await fetch(params.fullUrl, {method: params.method, headers: params.headers, body: params.body})
   } catch (error) {
     res = {ok: false, status: 'network', headers: {map: {'content-type': ['']}}}
+  }
+  if (config && config.afterRequest) {
+    res = config.afterRequest(res)
   }
 
   if (__DEV__) {
@@ -73,13 +80,13 @@ export default async function http (mutate, actionName, actionResult) {
     if (result.data === undefined) {
       let result = { data: { 'status': 'error', 'message': 'Parse error', 'error_type': res.status } }
       mutate(actionName + 'Fail', result)
-      return
-    }
-    mutate(actionName + 'Success', result)
-    if (method === 'GET') {
-      let etag = res.headers.get('etag')
-      AsyncStorage.setItem('etag_' + fullUrl, etag)
-      AsyncStorage.setItem('cache_' + fullUrl, res._bodyText)
+    } else {
+      mutate(actionName + 'Success', result)
+      if (method === 'GET') {
+        let etag = res.headers.get('etag')
+        AsyncStorage.setItem('etag_' + fullUrl, etag)
+        AsyncStorage.setItem('cache_' + fullUrl, res._bodyText)
+      }
     }
   } else if (res.status === 304) {
     // use cache
@@ -94,9 +101,9 @@ export default async function http (mutate, actionName, actionResult) {
     if (result.data === undefined) {
       let result = { data: { 'status': 'error', 'message': 'Parse error', 'error_type': res.status } }
       mutate(actionName + 'Fail', result)
-      return
+    } else {
+      mutate(actionName + 'Success', result)
     }
-    mutate(actionName + 'Success', result)
   } else if (res.headers.map['content-type'][0] === 'application/json') {
     // normal errors
     let result = { data: await res.json() }
@@ -114,4 +121,10 @@ export default async function http (mutate, actionName, actionResult) {
     }
     mutate(actionName + 'Fail', result)
   }
+
+  if (config && config.afterMutate) {
+    config.afterMutate(res, mutate)
+  }
 }
+
+export default (config) => (...params) => http(...params, config)

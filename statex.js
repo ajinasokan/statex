@@ -1,18 +1,30 @@
 import React, { PureComponent } from 'react'
+import { AsyncStorage } from 'react-native'
 import createReactClass from 'create-react-class'
 
 let _state = {}
 let _listeners = []
 let _middlewares = []
 let _actions = {}
-let _reducers = {}
+let _reducers = {loadStore: storedStore => storedStore}
 let _dispatchers = {}
+let _persistFilter = store => {}
 
-function init (actions, reducers, middlewares) {
+function init (actions, reducers, middlewares, persistFilter) {
   _middlewares = middlewares
+  _persistFilter = persistFilter
   actions.forEach((action) => { _actions = {..._actions, ...action} })
   reducers.forEach((reducer) => { _state = {..._state, ...reducer.init()}; _reducers = {..._reducers, ...reducer} })
   Object.keys(_actions).forEach((action) => { _dispatchers[action] = (...params) => mutate(action, params) })
+  _state.loadStore = 'inprogress'
+  AsyncStorage.getItem('state').then(state => {
+    let storedStore = {}
+    if(state !== undefined){
+      storedStore = JSON.parse(state)
+    }
+    storedStore.loadStore = 'finish'
+    mutate('loadStore', storedStore)
+  })
 }
 
 function connect (container, map) {
@@ -32,6 +44,7 @@ function mutate (actionName, params) {
   _listeners.forEach(l => l.setState(_state))
   if (__DEV__) {
     let newState = JSON.stringify(_state)
+    AsyncStorage.setItem('state', JSON.stringify(_persistFilter(_state)))
     let newTime = window.performance.now()
     report(prevState, actionName, params, actionResult, diff, newState, newTime - prevTime)
   }
