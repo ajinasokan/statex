@@ -37,7 +37,7 @@ function mutate (actionName, params) {
     prevState = JSON.stringify(_state)
     prevTime = window.performance.now()
   }
-  let actionResult = _actions[actionName] ? _actions[actionName](...params) : params
+  let actionResult = _actions[actionName] ? _actions[actionName](...params, {state: _state, mutate}) : params
   if (typeof actionResult === 'function') { actionResult(mutate, _state); actionResult = undefined }
   let diff = _reducers[actionName] ? _reducers[actionName](actionResult, _state) : {}
   _state = {..._state, ...diff}
