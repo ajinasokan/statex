@@ -21,7 +21,7 @@ function init (actions, reducers, middlewares, persistFilter) {
     let storedStore = {}
     if(state !== undefined){
       storedStore = JSON.parse(state)
-    }
+	}
     storedStore.loadStore = 'finish'
     mutate('loadStore', storedStore)
   })
