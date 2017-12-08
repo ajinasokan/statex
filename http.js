@@ -26,6 +26,12 @@ async function http (mutate, actionName, actionResult, config) {
   // setup
   let body
   let fullUrl = url
+  for(let param in params){
+    if(fullUrl.includes(':' + param)){
+      fullUrl = fullUrl.replace(':' + param, params[param])
+      delete params[param]
+    }
+  }
   let urlparams = queryStringify(params)
   if (urlparams !== '') fullUrl += '?' + urlparams
   method = method.toUpperCase()
