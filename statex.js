@@ -39,6 +39,7 @@ function mutate (actionName, params) {
 	}
 	let paramsForAction = params.length !== undefined ? params : [params]
 	let actionResult = _actions[actionName] ? _actions[actionName](...paramsForAction, { state: _state, mutate }) : params
+	if (typeof actionResult === 'function') { actionResult = actionResult(mutate, _state); }
 	let diff = _reducers[actionName] ? _reducers[actionName](actionResult, _state) : {}
 	_state = { ..._state, ...diff }
 	_listeners.forEach(l => l.setState(_state))
