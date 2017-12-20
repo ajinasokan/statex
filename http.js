@@ -1,137 +1,79 @@
+import React, { PureComponent } from 'react'
 import { AsyncStorage } from 'react-native'
-import unpack from './unpack'
+import createReactClass from 'create-react-class'
 
-async function http (mutate, actionName, actionResult, config) {
-  // not http call
-  if (actionResult === undefined || actionResult.payload === undefined) return
+let _state = {}
+let _listeners = []
+let _middlewares = []
+let _actions = {}
+let _reducers = { loadStore: storedStore => storedStore }
+let _dispatchers = {}
+let _persistFilter = store => { }
 
-  // logs
-  let prevTime
-  let networkTime
-  let parseTime
+function init (actions, reducers, middlewares, persistFilter) {
+  _middlewares = middlewares
+  _persistFilter = persistFilter
+  actions.forEach((action) => { _actions = { ..._actions, ...action } })
+  reducers.forEach((reducer) => { _state = { ..._state, ...reducer.init() }; _reducers = { ..._reducers, ...reducer } })
+  Object.keys(_actions).forEach((action) => { _dispatchers[action] = (...params) => mutate(action, params) })
+  _state.loadStore = 'inprogress'
+  AsyncStorage.getItem('state').then(state => {
+    let storedStore = {}
+    if (state !== null) {
+      storedStore = JSON.parse(state)
+    }
+    storedStore.loadStore = 'finish'
+    mutate('loadStore', storedStore)
+  })
+}
+
+function connect (container, map) {
+  return createReactClass({ render: function(){ return <Listener transform={this.props.transform} root={container} map={map} /> } })
+}
+
+function mutate (actionName, params) {
+  let prevState, prevTime
   if (__DEV__) {
+    prevState = JSON.stringify(_state)
     prevTime = window.performance.now()
   }
-
-  let enc = encodeURIComponent
-  let queryStringify = dict => Object.entries(dict).map(([k, v]) => `${enc(k)}=${enc(v)}`).join('&')
-  let { method, url, params, data, content } = actionResult.payload
-
-  // fallbacks
-  if (method === undefined) method = 'GET'
-  if (data === undefined) data = {}
-  if (params === undefined) params = {}
-  if (content === undefined) content = 'json'
-
-  // setup
-  let body
-  let fullUrl = url
-  for(let param in params){
-    if(fullUrl.includes(':' + param)){
-      fullUrl = fullUrl.replace(':' + param, params[param])
-      delete params[param]
-    }
-  }
-  let urlparams = queryStringify(params)
-  if (urlparams !== '') fullUrl += '?' + urlparams
-  method = method.toUpperCase()
-
-  // cache
-  var headers = new Headers()
-  if (method === 'GET') {
-    let etag = await AsyncStorage.getItem('etag_' + url)
-    if (etag !== undefined) headers.append('If-None-Match', etag)
-  }
-
-  // content type
-  if (method === 'POST' || method === 'PUT') {
-    if (content === 'form') {
-      headers.append('content-type', 'application/x-www-form-urlencoded')
-      body = queryStringify(data)
-    } else {
-      headers.append('content-type', 'application/json')
-      body = JSON.stringify(data)
-    }
-  }
-
-  // calls
-  let res
-  try {
-    let params = {fullUrl, method, headers, body}
-    if (config && config.beforeRequest) {
-      params = config.beforeRequest(params)
-    }
-    res = await fetch(params.fullUrl, {method: params.method, headers: params.headers, body: params.body})
-  } catch (error) {
-    res = {ok: false, status: 'network', headers: {map: {'content-type': ['']}}}
-  }
-  if (config && config.afterRequest) {
-    res = config.afterRequest(res)
-  }
-
+  let paramsForAction = params.length !== undefined ? params : [params]
+  let actionResult = _actions[actionName] ? _actions[actionName](...paramsForAction, { state: _state, mutate }) : params
+  if (typeof actionResult === 'function') { actionResult = actionResult(mutate, _state); }
+  let diff = _reducers[actionName] ? _reducers[actionName](actionResult, _state) : {}
+  _state = { ..._state, ...diff }
+  _listeners.forEach(l => l.setState(_state))
   if (__DEV__) {
-    networkTime = (window.performance.now() - prevTime).toFixed(2)
+    let newState = JSON.stringify(_state)
+    AsyncStorage.setItem('state', JSON.stringify(_persistFilter(_state)))
+    let newTime = window.performance.now()
+    report(prevState, actionName, params, actionResult, diff, newState, newTime - prevTime)
   }
+  _middlewares.forEach((middleware) => middleware(mutate, actionName, actionResult))
+}
 
-  if (res.ok) {
-    // all good
-    let result = { data: await res.json() }
-    if (actionResult.payload.struct !== undefined) {
-      result.data = unpack(actionResult.payload.struct, result.data)
-    }
-    if (__DEV__) {
-      parseTime = (window.performance.now() - prevTime - networkTime).toFixed(2)
-      result.log = ['%cresponse %c' + networkTime + 'ms %cparse %c' + parseTime + 'ms', 'color:#26A69A;font-weight:bold;', '', 'color:#26A69A;font-weight:bold;', '']
-    }
-    if (result.data === undefined) {
-      let result = { data: { 'status': 'error', 'message': 'Parse error', 'error_type': res.status } }
-      mutate(actionName + 'Fail', result)
-    } else {
-      mutate(actionName + 'Success', result)
-      if (method === 'GET') {
-		let etag = res.headers.get('etag')
-		if(!etag) etag = ''
-        AsyncStorage.setItem('etag_' + fullUrl, etag)
-        AsyncStorage.setItem('cache_' + fullUrl, res._bodyText)
-      }
-    }
-  } else if (res.status === 304) {
-    // use cache
-    let result = { data: JSON.parse(await AsyncStorage.getItem('cache_' + fullUrl)) }
-    if (actionResult.payload.struct !== undefined) {
-      result.data = unpack(actionResult.payload.struct, result.data)
-    }
-    if (__DEV__) {
-      parseTime = (window.performance.now() - prevTime - networkTime).toFixed(2)
-      result.log = ['%ccache %c' + networkTime + 'ms %cparse %c' + parseTime + 'ms', 'color:#26A69A;font-weight:bold;', '', 'color:#26A69A;font-weight:bold;', '']
-    }
-    if (result.data === undefined) {
-      let result = { data: { 'status': 'error', 'message': 'Parse error', 'error_type': res.status } }
-      mutate(actionName + 'Fail', result)
-    } else {
-      mutate(actionName + 'Success', result)
-    }
-  } else if (res.headers.map['content-type'][0] === 'application/json') {
-    // normal errors
-    let result = { data: await res.json() }
-    if (__DEV__) {
-      parseTime = (window.performance.now() - prevTime - networkTime).toFixed(2)
-      result.log = ['%cresponse %c' + networkTime + 'ms %cparse %c' + parseTime + 'ms', 'color:#26A69A;font-weight:bold;', '', 'color:#26A69A;font-weight:bold;', '']
-    }
-    mutate(actionName + 'Fail', result)
-  } else {
-    // bad
-    let result = { data: { 'status': 'error', 'message': 'Connection error', 'error_type': res.status } }
-    if (__DEV__) {
-      parseTime = (window.performance.now() - prevTime - networkTime).toFixed(2)
-      result.log = ['%cresponse %c' + networkTime + 'ms %cparse %c' + parseTime + 'ms', 'color:#26A69A;font-weight:bold;', '', 'color:#26A69A;font-weight:bold;', '']
-    }
-    mutate(actionName + 'Fail', result)
+async function report (prevState, actionName, params, result, diff, newState, exectime) {
+  console.group('%caction', 'color:grey;font-weight:bold;', actionName)
+  console.log('%cprev state', 'color:#f17b5e;font-weight:bold;', JSON.parse(prevState))
+  console.log('%caction', 'color:#03A9F4;font-weight:bold;', { params, result, diff })
+  console.log('%cnew state', 'color:#4CAF50;font-weight:bold;', JSON.parse(newState))
+  console.log('%cconsumed', 'color:#f25e99;font-weight:bold;', exectime.toFixed(2) + 'ms')
+  if (result !== undefined && result.log !== undefined) {
+    console.log(...result.log)
   }
+  console.groupEnd()
+}
 
-  if (config && config.afterMutate) {
-    config.afterMutate(res, mutate)
+class Listener extends PureComponent {
+  componentWillMount () {
+    _listeners.push(this)
+  }
+  componentWillUnmount () {
+    _listeners.splice(_listeners.indexOf(this), 1)
+  }
+  render () {
+    return <this.props.root transform={this.props.transform} {...this.props.map(_state)} actions={_dispatchers} />
   }
 }
 
-export default (config) => (...params) => http(...params, config)
+module.exports = { init, mutate, connect }
