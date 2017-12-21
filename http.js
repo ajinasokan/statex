@@ -27,10 +27,10 @@ async function http (mutate, actionName, actionResult, config) {
   let body
   let fullUrl = url
   for(let param in params){
-	  if(fullUrl.includes(':' + param)){
-		  fullUrl = fullUrl.replace(':' + param, params[param])
-		  delete params[param]
-	  }
+    if(fullUrl.includes(':' + param)){
+      fullUrl = fullUrl.replace(':' + param, params[param])
+      delete params[param]
+    }
   }
   let urlparams = queryStringify(params)
   if (urlparams !== '') fullUrl += '?' + urlparams
@@ -60,8 +60,18 @@ async function http (mutate, actionName, actionResult, config) {
     let params = {fullUrl, method, headers, body}
     if (config && config.beforeRequest) {
       params = config.beforeRequest(params)
+  }
+  if (actionResult.payload.cacheAge !== undefined) {
+    let cachedon = await AsyncStorage.getItem('cachedon_' + fullUrl)
+    if (cachedon === null) cachedon = 0
+    if (new Date().getTime() - cachedon < actionResult.payload.cacheAge * 1000) {
+      res = { status: 304, _bodyText: '' }
+    } else {
+      res = await fetch(params.fullUrl, {method: params.method, headers: params.headers, body: params.body})
     }
+  } else {
     res = await fetch(params.fullUrl, {method: params.method, headers: params.headers, body: params.body})
+  }
   } catch (error) {
     res = {ok: false, status: 'network', headers: {map: {'content-type': ['']}}}
   }
@@ -89,10 +99,11 @@ async function http (mutate, actionName, actionResult, config) {
     } else {
       mutate(actionName + 'Success', result)
       if (method === 'GET') {
-		let etag = res.headers.get('etag')
-		if(!etag) etag = ''
+    let etag = res.headers.get('etag')
+    if(!etag) etag = ''
         AsyncStorage.setItem('etag_' + fullUrl, etag)
-        AsyncStorage.setItem('cache_' + fullUrl, res._bodyText)
+    AsyncStorage.setItem('cache_' + fullUrl, res._bodyText)
+    AsyncStorage.setItem('cachedon_' + fullUrl, new Date().getTime())
       }
     }
   } else if (res.status === 304) {
