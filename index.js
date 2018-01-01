@@ -4,4 +4,4 @@ import unpack from './unpack'
 
 let middlewares = { http }
 
-module.exports = { init, connect, middlewares }
+module.exports = { init, connect, middlewares, unpack }
