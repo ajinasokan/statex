@@ -103,7 +103,7 @@ async function http (mutate, actionName, actionResult, config) {
     if(!etag) etag = ''
         AsyncStorage.setItem('etag_' + fullUrl, etag)
     AsyncStorage.setItem('cache_' + fullUrl, res._bodyText)
-    AsyncStorage.setItem('cachedon_' + fullUrl, new Date().getTime())
+    AsyncStorage.setItem('cachedon_' + fullUrl, new Date().getTime().toString())
       }
     }
   } else if (res.status === 304) {
