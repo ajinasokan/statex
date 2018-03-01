@@ -43,9 +43,9 @@ function mutate (actionName, params) {
   let diff = _reducers[actionName] ? _reducers[actionName](actionResult, _state) : {}
   _state = { ..._state, ...diff }
   _listeners.forEach(l => l.setState(_state))
+  AsyncStorage.setItem('state', JSON.stringify(_persistFilter(_state)))
   if (__DEV__) {
     let newState = JSON.stringify(_state)
-    AsyncStorage.setItem('state', JSON.stringify(_persistFilter(_state)))
     let newTime = window.performance.now()
     report(prevState, actionName, params, actionResult, diff, newState, newTime - prevTime)
   }
