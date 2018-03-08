@@ -37,6 +37,7 @@ function mutate (actionName, params) {
     prevState = JSON.stringify(_state)
     prevTime = window.performance.now()
   }
+  if(params === undefined) params = []
   let paramsForAction = params.length !== undefined ? params : [params]
   let actionResult = _actions[actionName] ? _actions[actionName](...paramsForAction, { state: _state, mutate }) : params
   if (typeof actionResult === 'function') { actionResult = actionResult(mutate, _state); }
