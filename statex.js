@@ -1,5 +1,5 @@
 import React, { PureComponent } from 'react'
-import { AsyncStorage } from 'react-native'
+import { AsyncStorage, Platform } from 'react-native'
 import createReactClass from 'create-react-class'
 
 let _state = {}
@@ -17,7 +17,7 @@ function init (actions, reducers, middlewares, persistFilter) {
 	reducers.forEach((reducer) => { _state = { ..._state, ...reducer.init() }; _reducers = { ..._reducers, ...reducer } })
 	Object.keys(_actions).forEach((action) => { _dispatchers[action] = (...params) => mutate(action, params) })
 	_state.loadStore = 'inprogress'
-	AsyncStorage.getItem('state').then(state => {
+	AsyncStorage.getItem('state_' + Platform.OS).then(state => {
 		let storedStore = {}
 		if (state !== null) {
 			storedStore = JSON.parse(state)
@@ -40,11 +40,11 @@ function mutate (actionName, params) {
 	if (params === undefined) params = []
 	let paramsForAction = params.length !== undefined ? params : [params]
 	let actionResult = _actions[actionName] ? _actions[actionName](...paramsForAction, { state: _state, mutate }) : params
-	if (typeof actionResult === 'function') { actionResult = actionResult(mutate, _state) }
+	if (typeof actionResult === 'function') { actionResult = actionResult(mutate, _state); }
 	let diff = _reducers[actionName] ? _reducers[actionName](actionResult, _state) : {}
 	_state = { ..._state, ...diff }
 	_listeners.forEach(l => l.setState(_state))
-	AsyncStorage.setItem('state', JSON.stringify(_persistFilter(_state)))
+	AsyncStorage.setItem('state_' + Platform.OS, JSON.stringify(_persistFilter(_state)))
 	if (__DEV__) {
 		let newState = JSON.stringify(_state)
 		let newTime = window.performance.now()
